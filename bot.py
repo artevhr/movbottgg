@@ -19,10 +19,14 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN    = os.getenv("BOT_TOKEN")
-CHANNEL_ID   = os.getenv("CHANNEL_ID")
-OMDB_API_KEY = os.getenv("OMDB_API_KEY")
-ADMIN_ID     = int(os.getenv("ADMIN_ID", "0"))
+# ✅ ФИКС — очищаем переменные от пробелов/кавычек (Railway часто их добавляет)
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip().strip('"').strip("'")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "").strip()
+OMDB_API_KEY = os.getenv("OMDB_API_KEY", "").strip()
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не найден в переменных окружения")
 
 OMDB_BASE = "https://www.omdbapi.com"
 
@@ -67,28 +71,6 @@ IMDB_IDS = [
     "tt14513596","tt28215930","tt27534307","tt23676838","tt21698216",
     "tt13610936","tt14782226","tt22022452","tt21692408","tt26435070",
     "tt28026473","tt15671028","tt22022452","tt29580183","tt21353570",
-    # 2025
-    "tt14513804","tt21353570","tt29580183","tt26435070","tt28026473",
-    "tt22022452","tt13610936","tt28215930","tt23676838","tt21698216",
-    # Сериалы — классика
-    "tt0944947","tt0903747","tt0795176","tt1475582","tt0306414",
-    "tt1536537","tt0386676","tt2861424","tt2442560","tt1190634",
-    "tt4574334","tt5180504","tt0108778","tt0411008","tt0460681",
-    "tt1520211","tt3107288","tt2467372","tt1748166","tt0773262",
-    "tt2802850","tt3749900","tt6468322","tt7366338","tt0455275",
-    "tt1830617","tt2707408","tt3032476","tt1844624","tt2356777",
-    "tt0112159","tt0098904","tt0121955","tt0141842","tt3581920",
-    "tt4508902","tt5753856","tt8111088","tt7016936","tt2306299",
-    "tt0417299","tt1831164","tt2741602","tt3107288","tt4295140",
-    # Сериалы 2022-2025
-    "tt11126994","tt10288566","tt13086118","tt14270498","tt10048036",
-    "tt12150602","tt11198330","tt14513596","tt15007628","tt13444912",
-    "tt10580974","tt14513814","tt11198330","tt13610936","tt12150602",
-    "tt11286314","tt15456274","tt13610936","tt10580974","tt14782226",
-    "tt13444912","tt15007628","tt10048036","tt14270498","tt13086118",
-    "tt10288566","tt11126994","tt15251316","tt16366836","tt10954600",
-    "tt14796836","tt8323668","tt21807222","tt9603212","tt8367814",
-    "tt11847842","tt12037194","tt13238346","tt11286314","tt14230458",
 ]
 
 GENRE_TRANSLATE = {
@@ -101,13 +83,11 @@ GENRE_TRANSLATE = {
     "Thriller":"Триллер","War":"Война","Western":"Вестерн",
 }
 
-
 def translate(text: str) -> str:
     try:
         return GoogleTranslator(source="en", target="ru").translate(text)
     except Exception:
         return text
-
 
 def fetch_movie(imdb_id: str) -> dict | None:
     try:
@@ -119,21 +99,20 @@ def fetch_movie(imdb_id: str) -> dict | None:
         logger.error(f"OMDb error: {e}")
     return None
 
-
 def build_message(data: dict) -> str:
     title_en = data.get("Title", "")
     title_ru = translate(title_en) if title_en else "Без названия"
-    year     = data.get("Year", "")
-    plot_en  = data.get("Plot", "")
-    plot     = translate(plot_en) if plot_en and plot_en != "N/A" else "Описание отсутствует."
-    media    = data.get("Type", "movie")
-    rating   = data.get("imdbRating", "N/A")
-    votes    = data.get("imdbVotes", "N/A")
+    year = data.get("Year", "")
+    plot_en = data.get("Plot", "")
+    plot = translate(plot_en) if plot_en and plot_en != "N/A" else "Описание отсутствует."
+    media = data.get("Type", "movie")
+    rating = data.get("imdbRating", "N/A")
+    votes = data.get("imdbVotes", "N/A")
 
-    is_movie      = media != "series"
+    is_movie = media != "series"
     media_hashtag = "#фильм" if is_movie else "#сериал"
 
-    genres_raw    = [g.strip() for g in data.get("Genre", "").split(",")]
+    genres_raw = [g.strip() for g in data.get("Genre", "").split(",")]
     genre_hashtags = " ".join(
         f"#{GENRE_TRANSLATE.get(g, g).replace(' ', '_')}"
         for g in genres_raw if g
@@ -155,19 +134,15 @@ def build_message(data: dict) -> str:
         f"{media_hashtag} {genre_hashtags}"
     )
 
-
 async def post_random_movie(bot: Bot, reply_chat_id: int | None = None):
     for _ in range(10):
         imdb_id = random.choice(IMDB_IDS)
-        data    = fetch_movie(imdb_id)
+        data = fetch_movie(imdb_id)
         if not data:
             continue
-        plot = data.get("Plot", "")
-        if not plot or plot == "N/A":
-            continue
 
-        text   = build_message(data)
-        title  = data.get("Title", "")
+        text = build_message(data)
+        title = data.get("Title", "")
         poster = data.get("Poster", "")
 
         if poster and poster != "N/A":
@@ -193,10 +168,6 @@ async def post_random_movie(bot: Bot, reply_chat_id: int | None = None):
             )
         return
 
-    if reply_chat_id:
-        await bot.send_message(reply_chat_id, "❌ Не удалось найти контент, попробуй ещё раз.")
-
-
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -206,14 +177,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/schedule — показать расписание постов на сегодня"
     )
 
-
 async def cmd_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("⛔ У тебя нет доступа.")
         return
     await update.message.reply_text("⏳ Ищу случайный фильм/сериал...")
     await post_random_movie(context.bot, reply_chat_id=update.effective_chat.id)
-
 
 async def cmd_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -232,13 +201,12 @@ async def cmd_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"• {t}")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
-
 def schedule_random_times(scheduler: AsyncIOScheduler, bot: Bot):
     posts_count = random.randint(2, 3)
-    windows     = [(8, 11), (13, 17), (19, 23)]
-    chosen      = random.sample(windows, posts_count)
+    windows = [(8, 11), (13, 17), (19, 23)]
+    chosen = random.sample(windows, posts_count)
     for hour_min, hour_max in chosen:
-        hour   = random.randint(hour_min, hour_max)
+        hour = random.randint(hour_min, hour_max)
         minute = random.randint(0, 59)
         scheduler.add_job(
             post_random_movie,
@@ -249,18 +217,16 @@ def schedule_random_times(scheduler: AsyncIOScheduler, bot: Bot):
         )
         logger.info(f"Пост запланирован на {hour:02d}:{minute:02d}")
 
-
 async def reschedule_daily(scheduler: AsyncIOScheduler, bot: Bot):
     for job in scheduler.get_jobs():
         if job.id.startswith("post_"):
             job.remove()
     schedule_random_times(scheduler, bot)
 
-
 async def main():
     app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start",    cmd_start))
-    app.add_handler(CommandHandler("post",     cmd_post))
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("post", cmd_post))
     app.add_handler(CommandHandler("schedule", cmd_schedule))
 
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
@@ -278,6 +244,6 @@ async def main():
     logger.info("Бот запущен!")
     await app.run_polling()
 
-
+# ✅ ФИКС — правильный запуск Python 3.13
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())
+    asyncio.run(main())
